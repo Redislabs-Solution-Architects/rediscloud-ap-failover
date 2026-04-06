@@ -1,6 +1,6 @@
 # Redis Active-Passive Failover Demo
 
-A self-contained demo app that showcases Redis Cloud Active-Passive replication and automated failover orchestration. Built for Redis Solution Architects.
+A demo app that showcases Redis Cloud Active-Passive replication and automated failover orchestration.
 
 ## What It Does
 
@@ -23,7 +23,7 @@ A self-contained demo app that showcases Redis Cloud Active-Passive replication 
 
 ```bash
 # Clone the repo
-git clone <repo-url>
+git clone [<repo-url>](https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git)
 cd failover-demo
 
 # Build the image
@@ -40,6 +40,12 @@ Open **http://localhost:8080**.
 Requires **Java 17+** and **Maven 3.8+**.
 
 ```bash
+# Clone the repo
+git clone [<repo-url>](https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git)
+cd failover-demo
+```
+
+```bash
 mvn spring-boot:run
 ```
 
@@ -49,6 +55,7 @@ Or build a JAR and run it:
 mvn package -DskipTests
 java -jar target/failover-demo-1.0-SNAPSHOT.jar
 ```
+Open **http://localhost:8080**.
 
 ## Architecture
 
