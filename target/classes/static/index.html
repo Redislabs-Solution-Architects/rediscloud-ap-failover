@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redis Failover Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#f7f7f8; color:#1a1a2e; }
+  .container { max-width:960px; margin:30px auto; padding:0 20px; }
+  h1 { text-align:center; margin-bottom:24px; font-size:22px; color:#1a1a2e; font-weight:700; }
+  .step { background:#fff; border-radius:10px; padding:16px 18px; box-shadow:0 1px 3px rgba(0,0,0,.1); margin-bottom:14px; }
+  .step.locked { opacity:.5; pointer-events:none; }
+  .step.hidden { display:none; }
+  .step-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .step-num { width:28px; height:28px; border-radius:50%; background:#ddd; color:#fff; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; }
+  .step-num.done { background:#DC382C; } .step-num.active { background:#DC382C; }
+  .step-title { font-weight:700; font-size:15px; }
+  .step-check { color:#DC382C; font-size:18px; }
+  .step-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .field-row { display:flex; gap:8px; margin-bottom:8px; }
+  .field-row input { flex:1; padding:7px 10px; border:1px solid #ddd; border-radius:6px; font-size:13px; }
+  .field-row input:disabled { background:#f5f5f5; color:#999; }
+  .save-btn { padding:8px 24px; border:none; border-radius:6px; font-weight:700; font-size:13px; cursor:pointer; color:#fff; background:#DC382C; }
+  .save-btn:disabled { background:#999; cursor:not-allowed; }
+  .edit-btn { padding:4px 12px; border:1px solid #ddd; border-radius:6px; background:#fff; font-size:12px; cursor:pointer; color:#555; margin-left:auto; }
+  .edit-btn:hover { background:#eee; }
+  .err-msg { color:#c30; font-size:12px; margin-top:4px; min-height:16px; }
+  .conn-row { display:flex; gap:12px; }
+  .conn-box { flex:1; }
+  .conn-box h4 { font-size:13px; margin-bottom:6px; color:#555; }
+  .conn-box input { width:100%; padding:7px 10px; margin-bottom:6px; border:1px solid #ddd; border-radius:6px; font-size:13px; }
+  .conn-box input:disabled { background:#f5f5f5; color:#999; }
+  .conn-err { color:#c30; font-size:12px; min-height:16px; }
+
+  /* Dashboard layout */
+  .main-layout { display:flex; gap:14px; margin-bottom:12px; }
+
+  /* Replication graphic */
+  .repl-card { background:#fff; border-radius:10px; padding:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.1); text-align:center; margin-bottom:12px; }
+  .repl-card .label { font-size:11px; text-transform:uppercase; color:#888; margin-bottom:6px; }
+  .repl-graphic { display:flex; align-items:center; justify-content:center; gap:6px; font-weight:700; font-size:16px; }
+  .repl-graphic .db-label { background:#eee; border-radius:6px; padding:4px 10px; font-size:14px; }
+  .repl-graphic .arrow { font-size:22px; color:#DC382C; }
+  .repl-graphic .no-repl { font-size:20px; color:#999; }
+
+  /* Failover steps panel */
+  .failover-panel { background:#fff; border-radius:10px; padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  .failover-panel .fp-title { font-size:13px; font-weight:700; margin-bottom:10px; }
+  .fo-step { padding:8px 0; border-bottom:1px solid #f0f0f0; }
+  .fo-step:last-child { border-bottom:none; }
+  .fo-step.pending { opacity:.4; }
+  .fo-step.active .fo-head { color:#DC382C; }
+  .fo-step.done .fo-head { color:#2e7d32; }
+  .fo-step.error .fo-head { color:#c30; }
+  .fo-head { font-weight:700; font-size:13px; display:flex; align-items:center; gap:6px; }
+  .fo-head .fo-icon { width:18px; text-align:center; }
+  .fo-details { font-family:'Source Code Pro', monospace; font-size:11px; color:#888; margin-top:4px; padding-left:24px; }
+  .fo-details div { padding:1px 0; }
+
+  /* Write selector */
+  .write-row { background:#fff; border-radius:10px; padding:10px 14px; box-shadow:0 1px 3px rgba(0,0,0,.1); display:flex; align-items:center; gap:8px; }
+  .write-row .label { font-size:11px; text-transform:uppercase; color:#888; white-space:nowrap; }
+  .write-btns { display:flex; gap:6px; }
+  .write-btns button { padding:5px 14px; border:2px solid #ddd; border-radius:6px; background:#fff; font-weight:700; font-size:12px; cursor:pointer; }
+  .write-btns button.active { border-color:#DC382C; background:#DC382C; color:#fff; }
+
+  /* Compact DB boxes */
+  .db-box { background:#fff; border-radius:10px; padding:10px 12px; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+  .db-box-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
+  .db-box-header .db-title { font-size:12px; font-weight:700; }
+  .db-box-header .db-size { font-size:20px; font-weight:700; }
+  .db-box-header .db-title.a { color:#DC382C; } .db-box-header .db-title.b { color:#1a1a2e; }
+  .db-box-header .db-size.a { color:#DC382C; } .db-box-header .db-size.b { color:#1a1a2e; }
+  .flush-btn { padding:2px 8px; border:1px solid #ddd; border-radius:4px; background:#fff; cursor:pointer; font-size:10px; color:#999; }
+  .flush-btn:hover { background:#fee; color:#c30; border-color:#c30; }
+
+  table { width:100%; border-collapse:collapse; border-radius:6px; overflow:hidden; margin-bottom:0; }
+  th { background:#1a1a2e; color:#fff; padding:5px 8px; text-align:left; font-size:11px; }
+  td { padding:4px 8px; border-bottom:1px solid #eee; font-family:'Source Code Pro', monospace; font-size:11px; max-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .buttons { display:flex; gap:10px; }
+  .btn { flex:1; padding:10px; font-size:13px; font-weight:700; border:none; border-radius:8px; cursor:pointer; color:#fff; }
+  .btn:disabled { background:#999!important; cursor:not-allowed; }
+  .btn-failover { background:#DC382C; } .btn-traffic { background:#1a1a2e; } .btn-traffic.stopped { background:#DC382C; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Redis Active-Passive Failover Demo</h1>
+
+  <!-- STEP 1 -->
+  <div class="step" id="step1">
+    <div class="step-header">
+      <div class="step-num active" id="step1Num">1</div>
+      <div class="step-title">Redis Cloud API Credentials</div>
+      <div class="step-actions" id="step1Actions" style="display:none;">
+        <div class="step-check">✓</div>
+        <button class="edit-btn" onclick="editStep1()">Edit</button>
+      </div>
+    </div>
+    <div class="field-row">
+      <input id="apiAccountKey" placeholder="Account Key">
+      <input id="apiSecretKey" type="password" placeholder="User API Key">
+      <button class="save-btn" id="apiSaveBtn" onclick="saveCredentials()">Save</button>
+    </div>
+    <div class="err-msg" id="apiErr"></div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step locked" id="step2">
+    <div class="step-header">
+      <div class="step-num" id="step2Num">2</div>
+      <div class="step-title">Database Connections</div>
+      <div class="step-actions" id="step2Actions" style="display:none;">
+        <div class="step-check">✓</div>
+        <button class="edit-btn" onclick="editStep2()">Edit</button>
+      </div>
+    </div>
+    <div class="conn-row">
+      <div class="conn-box">
+        <h4>Database-A</h4>
+        <input id="dbAEndpoint" placeholder="host:port">
+        <input id="dbAPassword" type="password" placeholder="Password">
+        <input id="dbASubId" placeholder="Subscription ID">
+        <input id="dbADbId" placeholder="Database ID">
+        <div class="conn-err" id="dbAErr"></div>
+      </div>
+      <div class="conn-box">
+        <h4>Database-B</h4>
+        <input id="dbBEndpoint" placeholder="host:port">
+        <input id="dbBPassword" type="password" placeholder="Password">
+        <input id="dbBSubId" placeholder="Subscription ID">
+        <input id="dbBDbId" placeholder="Database ID">
+        <div class="conn-err" id="dbBErr"></div>
+      </div>
+    </div>
+    <button class="save-btn" id="connSaveBtn" onclick="saveConnections()" style="margin-top:8px;">Save</button>
+    <div class="err-msg" id="connErr"></div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step hidden" id="step3">
+    <div class="step-header">
+      <div class="step-num" id="step3Num">3</div>
+      <div class="step-title">Dashboard</div>
+    </div>
+  </div>
+
+  <div id="dashboard" style="display:none;">
+    <!-- Replication card (full width, fixed height) -->
+    <div class="repl-card" style="margin-bottom:12px; min-height:100px;">
+      <div class="label">Replication</div>
+      <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin:8px 0;">
+        <div class="repl-graphic" id="replGraphic">
+          <span class="db-label">A</span><span class="no-repl">——✕——</span><span class="db-label">B</span>
+        </div>
+        <div id="replEnable">
+          <select id="replDirection" style="padding:4px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;">
+            <option value="A_TO_B">A → B</option><option value="B_TO_A">B → A</option>
+          </select>
+          <button onclick="enableReplication()" style="padding:4px 12px;border:none;border-radius:6px;background:#DC382C;color:#fff;font-weight:700;font-size:12px;cursor:pointer;margin-left:4px;">Enable</button>
+        </div>
+      </div>
+      <div id="replDetails" style="display:none; text-align:left; background:#f8f8f8; border-radius:6px; padding:8px 10px; font-family:'Source Code Pro', monospace; font-size:11px; color:#555; word-break:break-all;"></div>
+    </div>
+
+    <!-- Controls row: Writing To + SETs/s + READs/s -->
+    <div style="display:flex; gap:12px; margin-bottom:12px; align-items:center; flex-wrap:wrap;">
+      <div class="write-row" style="flex:0 0 auto;">
+        <div class="label">Writing To</div>
+        <div class="write-btns">
+          <button id="writeA" class="active" onclick="switchWrite('A')">Database-A</button>
+          <button id="writeB" onclick="switchWrite('B')">Database-B</button>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;background:#fff;border-radius:8px;padding:6px 10px;box-shadow:0 1px 3px rgba(0,0,0,.1);">
+        <label style="font-size:11px;font-weight:700;white-space:nowrap;">SETs/s</label>
+        <input id="opsInput" type="number" min="1" max="10000" value="2" style="width:60px;padding:5px;border:1px solid #ddd;border-radius:6px;font-size:12px;text-align:center;" oninput="debouncedSetRate()">
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;background:#fff;border-radius:8px;padding:6px 10px;box-shadow:0 1px 3px rgba(0,0,0,.1);">
+        <label style="font-size:11px;font-weight:700;white-space:nowrap;">READs/s</label>
+        <input id="readsInput" type="number" min="1" max="20" value="4" style="width:60px;padding:5px;border:1px solid #ddd;border-radius:6px;font-size:12px;text-align:center;" oninput="updateReadRate()">
+      </div>
+    </div>
+
+    <!-- Row 2: DB boxes side by side -->
+    <div class="main-layout">
+      <div class="db-box" style="flex:1; min-width:0;">
+        <div class="db-box-header">
+          <span class="db-title a">Database-A</span>
+          <button class="flush-btn" onclick="flushDb('A')">Flush</button>
+          <span class="db-size a" id="dbASize">—</span>
+        </div>
+        <table style="table-layout:fixed;width:100%;"><colgroup><col></colgroup>
+          <thead><tr><th>Key</th></tr></thead>
+          <tbody id="readKeysA"><tr><td>&nbsp;</td></tr></tbody>
+        </table>
+      </div>
+      <div class="db-box" style="flex:1; min-width:0;">
+        <div class="db-box-header">
+          <span class="db-title b">Database-B</span>
+          <button class="flush-btn" onclick="flushDb('B')">Flush</button>
+          <span class="db-size b" id="dbBSize">—</span>
+        </div>
+        <table style="table-layout:fixed;width:100%;"><colgroup><col></colgroup>
+          <thead><tr><th>Key</th></tr></thead>
+          <tbody id="readKeysB"><tr><td>&nbsp;</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Row 3: Buttons -->
+    <div class="buttons" style="margin-bottom:12px;">
+      <button class="btn btn-traffic stopped" id="trafficBtn" onclick="toggleTraffic()">▶ Start Traffic</button>
+      <button class="btn btn-failover" id="failoverBtn" onclick="startFailover()">Start Failover</button>
+    </div>
+
+    <!-- Row 4: Failover Steps -->
+    <div class="failover-panel">
+      <div class="fp-title">Failover Steps</div>
+      <div id="failoverSteps">
+        <div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 1: Pause Traffic</div></div>
+        <div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 2: Disable Replication</div></div>
+        <div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 3: Switch Writes</div></div>
+        <div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 4: Resume Traffic</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let replPolling = null;
+
+// ── STEP 1 ──
+function saveCredentials() {
+  const err = document.getElementById('apiErr'), btn = document.getElementById('apiSaveBtn');
+  err.textContent = ''; btn.disabled = true; btn.textContent = 'Validating...';
+  fetch('/api/credentials', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ accountKey: document.getElementById('apiAccountKey').value, secretKey: document.getElementById('apiSecretKey').value })
+  }).then(r=>r.json()).then(d => {
+    if (d.status === 'saved') lockStep1();
+    else { err.textContent = d.message || 'Error'; btn.disabled = false; btn.textContent = 'Save'; }
+  }).catch(() => { err.textContent = 'Request failed'; btn.disabled = false; btn.textContent = 'Save'; });
+}
+function lockStep1() {
+  document.getElementById('apiAccountKey').disabled = true;
+  document.getElementById('apiSecretKey').disabled = true;
+  document.getElementById('apiSaveBtn').style.display = 'none';
+  document.getElementById('step1Num').className = 'step-num done';
+  document.getElementById('step1Actions').style.display = '';
+  document.getElementById('step2').classList.remove('locked');
+  document.getElementById('step2Num').className = 'step-num active';
+}
+function editStep1() {
+  document.getElementById('apiAccountKey').disabled = false;
+  document.getElementById('apiSecretKey').disabled = false;
+  document.getElementById('apiSaveBtn').style.display = '';
+  document.getElementById('apiSaveBtn').disabled = false;
+  document.getElementById('apiSaveBtn').textContent = 'Save';
+  document.getElementById('step1Num').className = 'step-num active';
+  document.getElementById('step1Actions').style.display = 'none';
+}
+
+// ── STEP 2 ──
+let dbAOk = false, dbBOk = false;
+function saveConnections() {
+  dbAOk = false; dbBOk = false;
+  document.getElementById('dbAErr').textContent = '';
+  document.getElementById('dbBErr').textContent = '';
+  document.getElementById('connSaveBtn').disabled = true;
+  document.getElementById('connSaveBtn').textContent = 'Validating...';
+  Promise.all([connectOne('A'), connectOne('B')]).then(() => {
+    if (dbAOk && dbBOk) lockStep2();
+    else { document.getElementById('connSaveBtn').disabled = false; document.getElementById('connSaveBtn').textContent = 'Save'; }
+  });
+}
+function connectOne(type) {
+  const ep = document.getElementById('db'+type+'Endpoint').value;
+  const pw = document.getElementById('db'+type+'Password').value;
+  const subId = document.getElementById('db'+type+'SubId').value;
+  const dbId = document.getElementById('db'+type+'DbId').value;
+  const errEl = document.getElementById('db'+type+'Err');
+  return fetch('/api/connect', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({type, endpoint: ep, password: pw, subscriptionId: subId, dbId: dbId})
+  }).then(r=>r.json()).then(d => {
+    if (d.status === 'connected') { if (type==='A') dbAOk=true; else dbBOk=true; }
+    else errEl.textContent = d.message || 'Error';
+  }).catch(() => { errEl.textContent = 'Request failed'; });
+}
+function lockStep2() {
+  document.querySelectorAll('#step2 input').forEach(i => i.disabled = true);
+  document.getElementById('connSaveBtn').style.display = 'none';
+  document.getElementById('step2Num').className = 'step-num done';
+  document.getElementById('step2Actions').style.display = '';
+  document.getElementById('step3').classList.remove('hidden');
+  document.getElementById('step3Num').className = 'step-num active';
+  document.getElementById('dashboard').style.display = '';
+  startReplPolling();
+  if (!window._pollStarted) { setInterval(poll, 800); poll(); startReadPolling(); pollReadKeys(); window._pollStarted = true; }
+}
+function editStep2() {
+  document.querySelectorAll('#step2 input').forEach(i => i.disabled = false);
+  document.getElementById('connSaveBtn').style.display = '';
+  document.getElementById('connSaveBtn').disabled = false;
+  document.getElementById('connSaveBtn').textContent = 'Save';
+  document.getElementById('step2Num').className = 'step-num active';
+  document.getElementById('step2Actions').style.display = 'none';
+}
+
+// ── Replication graphic ──
+function startReplPolling() { if (!replPolling) { replPolling = setInterval(pollReplication, 5000); pollReplication(); } }
+function pollReplication() {
+  fetch('/api/replication-status').then(r=>r.json()).then(d => {
+    const g = document.getElementById('replGraphic');
+    const enableDiv = document.getElementById('replEnable');
+    const detailsDiv = document.getElementById('replDetails');
+    if (d.direction === 'A_TO_B') {
+      g.innerHTML = '<span class="db-label">A</span><span class="arrow">━━▶</span><span class="db-label">B</span>';
+      enableDiv.style.display = 'none';
+      if (replEnabling) {
+        replEnabling = false;
+        // Update status text but keep details visible
+        const statusEl = detailsDiv.querySelector('.repl-status-msg');
+        if (statusEl) statusEl.innerHTML = '<span style="color:#2e7d32;">✓ Replication Active</span>';
+      }
+    } else if (d.direction === 'B_TO_A') {
+      g.innerHTML = '<span class="db-label">A</span><span class="arrow">◀━━</span><span class="db-label">B</span>';
+      enableDiv.style.display = 'none';
+      if (replEnabling) {
+        replEnabling = false;
+        const statusEl = detailsDiv.querySelector('.repl-status-msg');
+        if (statusEl) statusEl.innerHTML = '<span style="color:#2e7d32;">✓ Replication Active</span>';
+      }
+    } else {
+      g.innerHTML = '<span class="db-label">A</span><span class="no-repl">——✕——</span><span class="db-label">B</span>';
+      if (!replEnabling) { enableDiv.style.display = ''; restoreEnableUI(); }
+    }
+  }).catch(() => {});
+}
+
+function resetFailoverSteps() {
+  const container = document.getElementById('failoverSteps');
+  container.innerHTML =
+    '<div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 1: Pause Traffic</div></div>' +
+    '<div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 2: Disable Replication</div></div>' +
+    '<div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 3: Switch Writes</div></div>' +
+    '<div class="fo-step pending"><div class="fo-head"><span class="fo-icon">○</span> Step 4: Resume Traffic</div></div>';
+  // Also reset backend steps
+  fetch('/api/reset-failover-steps', { method:'POST' }).catch(() => {});
+}
+
+let replEnabling = false;
+function enableReplication() {
+  const dir = document.getElementById('replDirection').value;
+  const enableDiv = document.getElementById('replEnable');
+  const detailsDiv = document.getElementById('replDetails');
+  replEnabling = true;
+  // Reset failover steps to pending
+  resetFailoverSteps();
+  enableDiv.innerHTML = '<div style="display:inline-block;width:18px;height:18px;border:2px solid #ddd;border-top-color:#DC382C;border-radius:50%;animation:spin 1s linear infinite;"></div>';
+  detailsDiv.style.display = 'none';
+  fetch('/api/start-replication', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({direction: dir}) })
+    .then(r=>r.json()).then(d => {
+      if (d.status === 'started') {
+        detailsDiv.innerHTML = '<div style="margin-bottom:4px;font-weight:700;">' + d.apiPath + '</div><div style="word-break:break-all;">' + d.payload + '</div><div class="repl-status-msg" style="margin-top:4px;color:#DC382C;">Waiting for confirmation...</div>';
+        detailsDiv.style.display = '';
+      } else {
+        replEnabling = false;
+        enableDiv.innerHTML = '<span style="color:#c30;font-size:12px;">' + (d.message||'Error') + '</span>';
+        setTimeout(() => { restoreEnableUI(); }, 3000);
+      }
+    }).catch(() => { replEnabling = false; restoreEnableUI(); });
+}
+function restoreEnableUI() {
+  replEnabling = false;
+  document.getElementById('replDetails').style.display = 'none';
+  document.getElementById('replDetails').innerHTML = '';
+  const enableDiv = document.getElementById('replEnable');
+  enableDiv.style.display = '';
+  enableDiv.innerHTML = '<select id="replDirection" style="padding:5px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;"><option value="A_TO_B">A → B</option><option value="B_TO_A">B → A</option></select>' +
+    '<button onclick="enableReplication()" style="padding:5px 14px;border:none;border-radius:6px;background:#DC382C;color:#fff;font-weight:700;font-size:12px;cursor:pointer;margin-left:4px;">Enable</button>';
+}
+
+// ── Write selector ──
+function switchWrite(to) {
+  fetch('/api/switch-write', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({to}) });
+}
+
+// ── Read-keys polling ──
+let readInterval = null;
+function startReadPolling() {
+  if (readInterval) clearInterval(readInterval);
+  const rps = parseInt(document.getElementById('readsInput').value) || 4;
+  readInterval = setInterval(pollReadKeys, Math.round(1000 / rps));
+}
+function updateReadRate() { startReadPolling(); }
+
+function pollReadKeys() {
+  fetch('/api/read-keys').then(r=>r.json()).then(d => {
+    const renderRows = (keys) => keys.map(k =>
+      k.key ? `<tr><td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${k.key}</td></tr>`
+            : `<tr><td>&nbsp;</td></tr>`
+    ).join('');
+    document.getElementById('readKeysA').innerHTML = renderRows(d.dbAKeys || []);
+    document.getElementById('readKeysB').innerHTML = renderRows(d.dbBKeys || []);
+  }).catch(() => {});
+}
+
+// ── Dashboard polling ──
+function poll() {
+  fetch('/api/status').then(r=>r.json()).then(d => {
+    if (d.connected) {
+      document.getElementById('dbASize').textContent = d.dbASize >= 0 ? d.dbASize : '—';
+      document.getElementById('dbBSize').textContent = d.dbBSize >= 0 ? d.dbBSize : '—';
+    }
+    // Write selector highlight
+    document.getElementById('writeA').classList.toggle('active', d.writingTo === 'A');
+    document.getElementById('writeB').classList.toggle('active', d.writingTo === 'B');
+
+    const tBtn = document.getElementById('trafficBtn');
+    if (d.trafficRunning) { tBtn.textContent = '⏸ Stop Traffic'; tBtn.classList.remove('stopped'); }
+    else { tBtn.textContent = '▶ Start Traffic'; tBtn.classList.add('stopped'); }
+
+    // Failover steps — only render from server when a failover is active or completed (non-pending steps exist)
+    if (d.failoverSteps && d.failoverSteps.length) {
+      const hasNonPending = d.failoverSteps.some(s => s.state !== 'pending');
+      if (hasNonPending) {
+        const stepsContainer = document.getElementById('failoverSteps');
+        stepsContainer.innerHTML = d.failoverSteps.map(s => {
+          const icon = s.state === 'done' ? '✓' : s.state === 'active' ? '⟳' : s.state === 'error' ? '✗' : '○';
+          const details = (s.details && s.details.length) ? '<div class="fo-details">' + s.details.map(dd => `<div>${dd}</div>`).join('') + '</div>' : '';
+          return `<div class="fo-step ${s.state}"><div class="fo-head"><span class="fo-icon">${icon}</span> Step ${s.num}: ${s.text}</div>${details}</div>`;
+        }).join('');
+      }
+    }
+    document.getElementById('trafficBtn').disabled = !d.connected;
+    document.getElementById('failoverBtn').disabled = !d.connected || d.failoverInProgress;
+  }).catch(() => {});
+}
+
+function startFailover() {
+  document.getElementById('failoverBtn').disabled = true;
+  fetch('/api/failover', { method:'POST' });
+}
+function toggleTraffic() { fetch('/api/traffic/toggle', { method:'POST' }); }
+let rateTimer = null;
+function debouncedSetRate() {
+  clearTimeout(rateTimer);
+  rateTimer = setTimeout(() => {
+    const ops = parseInt(document.getElementById('opsInput').value) || 2;
+    fetch('/api/traffic/rate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({opsPerSecond: ops}) });
+  }, 300);
+}
+function flushDb(which) { if (confirm('Flush Database-'+which+'? This deletes all keys.')) fetch('/api/flush/'+which,{method:'POST'}); }
+
+// ── Auto-restore ──
+(function init() {
+  fetch('/api/saved-config').then(r=>r.json()).then(c => {
+    const hasApi = c.apiAccountKey && c.apiSecretKey;
+    const hasA = c.dbAEndpoint && c.dbAPassword && c.dbASubId && c.dbADbId;
+    const hasB = c.dbBEndpoint && c.dbBPassword && c.dbBSubId && c.dbBDbId;
+    if (c.apiAccountKey) document.getElementById('apiAccountKey').value = c.apiAccountKey;
+    if (c.apiSecretKey) document.getElementById('apiSecretKey').value = c.apiSecretKey;
+    if (c.dbAEndpoint) document.getElementById('dbAEndpoint').value = c.dbAEndpoint;
+    if (c.dbAPassword) document.getElementById('dbAPassword').value = c.dbAPassword;
+    if (c.dbASubId) document.getElementById('dbASubId').value = c.dbASubId;
+    if (c.dbADbId) document.getElementById('dbADbId').value = c.dbADbId;
+    if (c.dbBEndpoint) document.getElementById('dbBEndpoint').value = c.dbBEndpoint;
+    if (c.dbBPassword) document.getElementById('dbBPassword').value = c.dbBPassword;
+    if (c.dbBSubId) document.getElementById('dbBSubId').value = c.dbBSubId;
+    if (c.dbBDbId) document.getElementById('dbBDbId').value = c.dbBDbId;
+    if (hasApi && hasA && hasB) {
+      document.getElementById('apiSaveBtn').disabled = true; document.getElementById('apiSaveBtn').textContent = 'Restoring...';
+      fetch('/api/credentials', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({accountKey: c.apiAccountKey, secretKey: c.apiSecretKey})
+      }).then(r=>r.json()).then(d => {
+        if (d.status === 'saved') {
+          lockStep1();
+          document.getElementById('connSaveBtn').disabled = true; document.getElementById('connSaveBtn').textContent = 'Restoring...';
+          Promise.all([connectOne('A'), connectOne('B')]).then(() => {
+            if (dbAOk && dbBOk) lockStep2();
+            else { document.getElementById('connSaveBtn').disabled = false; document.getElementById('connSaveBtn').textContent = 'Save'; }
+          });
+        }
+      });
+    } else if (hasApi) {
+      fetch('/api/credentials', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({accountKey: c.apiAccountKey, secretKey: c.apiSecretKey})
+      }).then(r=>r.json()).then(d => { if (d.status === 'saved') lockStep1(); });
+    }
+  }).catch(() => {});
+})();
+</script>
+</body>
+</html>
