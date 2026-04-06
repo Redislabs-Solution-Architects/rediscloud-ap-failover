@@ -23,7 +23,7 @@ A demo app that showcases Redis Cloud Active-Passive replication and automated f
 
 ```bash
 # Clone the repo
-git clone [<repo-url>](https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git)
+git clone https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git
 cd failover-demo
 
 # Build the image
@@ -41,7 +41,7 @@ Requires **Java 17+** and **Maven 3.8+**.
 
 ```bash
 # Clone the repo
-git clone [<repo-url>](https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git)
+git clone https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git
 cd failover-demo
 ```
 
