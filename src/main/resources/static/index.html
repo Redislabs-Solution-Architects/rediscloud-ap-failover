@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Redis Failover Demo</title>
+<link rel="icon" type="image/png" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
@@ -313,6 +314,7 @@ function editStep2() {
 }
 
 // ── Replication graphic ──
+let replActive = false;
 function startReplPolling() { if (!replPolling) { replPolling = setInterval(pollReplication, 5000); pollReplication(); } }
 function pollReplication() {
   fetch('/api/replication-status').then(r=>r.json()).then(d => {
@@ -320,6 +322,7 @@ function pollReplication() {
     const enableDiv = document.getElementById('replEnable');
     const detailsDiv = document.getElementById('replDetails');
     if (d.direction === 'A_TO_B') {
+      replActive = true;
       g.innerHTML = '<span class="db-label">A</span><span class="arrow">━━▶</span><span class="db-label">B</span>';
       enableDiv.style.display = 'none';
       if (replEnabling) {
@@ -329,6 +332,7 @@ function pollReplication() {
         if (statusEl) statusEl.innerHTML = '<span style="color:#2e7d32;">✓ Replication Active</span>';
       }
     } else if (d.direction === 'B_TO_A') {
+      replActive = true;
       g.innerHTML = '<span class="db-label">A</span><span class="arrow">◀━━</span><span class="db-label">B</span>';
       enableDiv.style.display = 'none';
       if (replEnabling) {
@@ -337,8 +341,9 @@ function pollReplication() {
         if (statusEl) statusEl.innerHTML = '<span style="color:#2e7d32;">✓ Replication Active</span>';
       }
     } else {
+      replActive = false;
       g.innerHTML = '<span class="db-label">A</span><span class="no-repl">——✕——</span><span class="db-label">B</span>';
-      if (!replEnabling) { enableDiv.style.display = ''; restoreEnableUI(); }
+      if (!replEnabling) { enableDiv.style.display = ''; if (!document.getElementById('replDirection')) restoreEnableUI(); }
     }
   }).catch(() => {});
 }
@@ -439,7 +444,7 @@ function poll() {
       }
     }
     document.getElementById('trafficBtn').disabled = !d.connected;
-    document.getElementById('failoverBtn').disabled = !d.connected || d.failoverInProgress;
+    document.getElementById('failoverBtn').disabled = !d.connected || d.failoverInProgress || !replActive;
   }).catch(() => {});
 }
 
