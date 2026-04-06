@@ -24,13 +24,13 @@ A self-contained demo app that showcases Redis Cloud Active-Passive replication 
 ```bash
 # Clone the repo
 git clone <repo-url>
-cd WorkspotPOC
+cd failover-demo
 
 # Build the image
-docker build -t workspot-poc .
+docker build -t failover-demo .
 
 # Run it
-docker run -p 8080:8080 workspot-poc
+docker run -p 8080:8080 failover-demo
 ```
 
 Open **http://localhost:8080**.
@@ -47,7 +47,7 @@ Or build a JAR and run it:
 
 ```bash
 mvn package -DskipTests
-java -jar target/workspot-poc-1.0-SNAPSHOT.jar
+java -jar target/failover-demo-1.0-SNAPSHOT.jar
 ```
 
 ## Architecture

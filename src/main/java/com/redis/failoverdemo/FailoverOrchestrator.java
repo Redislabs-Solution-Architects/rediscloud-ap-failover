@@ -1,4 +1,4 @@
-package com.redis.workspot;
+package com.redis.failoverdemo;
 
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;

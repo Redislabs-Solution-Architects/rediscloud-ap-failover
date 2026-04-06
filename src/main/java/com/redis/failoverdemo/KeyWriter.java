@@ -1,4 +1,4 @@
-package com.redis.workspot;
+package com.redis.failoverdemo;
 
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class KeyWriter implements Runnable {
 
     private final RedisConnectionManager connMgr;
-    private final String keyPrefix = "workspot:key:";
+    private final String keyPrefix = "key:";
     private static final int PIPELINE_BATCH = 100; // commands per pipeline flush
     private volatile int opsPerSecond = 2;
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -29,20 +29,20 @@ public class KeyWriter implements Runnable {
         this.connMgr = connMgr;
     }
 
-    /** Read workspot:keycount from the active DB's pool and seed the counter. */
+    /** Read keycount from the active DB's pool and seed the counter. */
     private void initFromRedis() {
         if (initialized) return;
         String activeDb = connMgr.getActiveDb();
         redis.clients.jedis.JedisPool pool = "A".equals(activeDb) ? connMgr.getAPool() : connMgr.getBPool();
         if (pool == null) return;
         try (Jedis j = pool.getResource()) {
-            String val = j.get("workspot:keycount");
+            String val = j.get("keycount");
             if (val != null) {
                 long n = Long.parseLong(val);
                 keyCount.set(n);
-                System.out.println("[WRITER] Resuming from workspot:keycount = " + n);
+                System.out.println("[WRITER] Resuming from keycount = " + n);
             } else {
-                j.set("workspot:keycount", "0");
+                j.set("keycount", "0");
                 System.out.println("[WRITER] No keycount found, starting at 0");
             }
             initialized = true;
@@ -86,7 +86,7 @@ public class KeyWriter implements Runnable {
                             batchEntries.add(Map.of("seq", String.valueOf(seq), "key", key, "value", value));
                         }
                         // Update the keycount tracker so readers know the latest key
-                        pipe.set("workspot:keycount", String.valueOf(lastSeq));
+                        pipe.set("keycount", String.valueOf(lastSeq));
                         pipe.sync();
                         sent += batchSize;
                         consecutiveErrors = 0;

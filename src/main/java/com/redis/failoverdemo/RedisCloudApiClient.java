@@ -1,4 +1,4 @@
-package com.redis.workspot;
+package com.redis.failoverdemo;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;

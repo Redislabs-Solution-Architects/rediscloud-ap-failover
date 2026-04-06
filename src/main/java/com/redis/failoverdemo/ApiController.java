@@ -1,4 +1,4 @@
-package com.redis.workspot;
+package com.redis.failoverdemo;
 
 import org.springframework.web.bind.annotation.*;
 import redis.clients.jedis.JedisPool;
@@ -206,12 +206,12 @@ public class ApiController {
         List<Map<String, String>> result = new ArrayList<>();
         if (pool == null) return padTo10(result);
         try (var jedis = pool.getResource()) {
-            String countStr = jedis.get("workspot:keycount");
+            String countStr = jedis.get("keycount");
             if (countStr == null) return padTo10(result);
             long highest = Long.parseLong(countStr);
             long start = Math.max(1, highest - 9);
             List<String> keys = new ArrayList<>();
-            for (long i = highest; i >= start; i--) keys.add("workspot:key:" + i);
+            for (long i = highest; i >= start; i--) keys.add("key:" + i);
             List<String> vals = jedis.mget(keys.toArray(new String[0]));
             for (int i = 0; i < keys.size(); i++) {
                 String k = keys.get(i);

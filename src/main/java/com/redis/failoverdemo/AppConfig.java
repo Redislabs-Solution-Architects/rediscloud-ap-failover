@@ -1,4 +1,4 @@
-package com.redis.workspot;
+package com.redis.failoverdemo;
 
 import java.io.*;
 import java.nio.file.Path;

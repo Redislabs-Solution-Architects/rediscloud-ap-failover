@@ -1,4 +1,4 @@
-package com.redis.workspot;
+package com.redis.failoverdemo;
 
 import jakarta.annotation.PreDestroy;
 import org.springframework.context.annotation.Bean;
