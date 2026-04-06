@@ -19,7 +19,7 @@ A self-contained demo app that showcases Redis Cloud Active-Passive replication 
 - **Redis Cloud API credentials** — generate at [Redis Cloud Console → Account → API Keys](https://app.redislabs.com/#/account/api-keys)
 - The **Subscription ID** and **Database ID** for each database (visible in the Cloud Console)
 
-## Build & Run Locally (Docker)
+## Run with Docker
 
 ```bash
 # Clone the repo
@@ -35,7 +35,7 @@ docker run -p 8080:8080 workspot-poc
 
 Open **http://localhost:8080**.
 
-## Build & Run Without Docker
+## Run without Docker
 
 Requires **Java 17+** and **Maven 3.8+**.
 
@@ -52,11 +52,15 @@ java -jar target/workspot-poc-1.0-SNAPSHOT.jar
 
 ## Architecture
 
-| Component | Tech |
-|-----------|------|
-| Backend | Spring Boot 3.2 (Java 17) |
-| Frontend | Single-page HTML/JS/CSS |
-| Redis client | Jedis |
-| Cloud API | REST via `java.net.HttpClient` |
+<div align="center">
+   
+   | Component | Tech |
+   |-----------|------|
+   | Backend | Spring Boot 3.2 (Java 17) |
+   | Frontend | Single-page HTML/JS/CSS |
+   | Redis client | Jedis |
+   | Cloud API | REST via `java.net.HttpClient` |
+   
+</div>
 
 All state is in-memory — no external database required beyond the two Redis instances you connect.
