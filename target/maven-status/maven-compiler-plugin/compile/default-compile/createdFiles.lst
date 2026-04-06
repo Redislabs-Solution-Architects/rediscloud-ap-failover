@@ -1,8 +1,0 @@
-com/redis/workspot/Main.class
-com/redis/workspot/KeyWriter.class
-com/redis/workspot/RedisConfig.class
-com/redis/workspot/RedisCloudApiClient.class
-com/redis/workspot/RedisConnectionManager.class
-com/redis/workspot/ApiController.class
-com/redis/workspot/FailoverOrchestrator.class
-com/redis/workspot/AppConfig.class
