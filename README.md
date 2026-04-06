@@ -13,15 +13,11 @@ A self-contained demo app that showcases Redis Cloud Active-Passive replication 
    - Execute a 4-step automated failover: Pause Traffic → Disable Replication → Switch Writes → Resume Traffic
    - Flush either database
 
-## Quick Start (Docker)
+## Prerequisites
 
-```bash
-docker pull ghcr.io/<your-org>/workspot-poc:latest   # or your registry URL
-
-docker run -p 8080:8080 ghcr.io/<your-org>/workspot-poc:latest
-```
-
-Open **http://localhost:8080** in your browser.
+- Two **Redis Cloud** databases (any tier)
+- **Redis Cloud API credentials** — generate at [Redis Cloud Console → Account → API Keys](https://app.redislabs.com/#/account/api-keys)
+- The **Subscription ID** and **Database ID** for each database (visible in the Cloud Console)
 
 ## Build & Run Locally (Docker)
 
@@ -53,12 +49,6 @@ Or build a JAR and run it:
 mvn package -DskipTests
 java -jar target/workspot-poc-1.0-SNAPSHOT.jar
 ```
-
-## Prerequisites
-
-- Two **Redis Cloud** databases (any tier)
-- **Redis Cloud API credentials** — generate at [Redis Cloud Console → Account → API Keys](https://app.redislabs.com/#/account/api-keys)
-- The **Subscription ID** and **Database ID** for each database (visible in the Cloud Console)
 
 ## Architecture
 
