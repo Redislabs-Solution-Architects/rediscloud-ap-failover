@@ -15,7 +15,7 @@ A demo app that showcases Redis Cloud Active-Passive replication and automated f
 
 ## Prerequisites
 
-- Two **Redis Cloud** databases (any tier)
+- Two **Redis Cloud** databases
 - **Redis Cloud API credentials** — generate at [Redis Cloud Console → Account → API Keys](https://app.redislabs.com/#/account/api-keys)
 - The **Subscription ID** and **Database ID** for each database (visible in the Cloud Console)
 
@@ -24,7 +24,7 @@ A demo app that showcases Redis Cloud Active-Passive replication and automated f
 ```bash
 # Clone the repo
 git clone https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git
-cd failover-demo
+cd rediscloud-ap-failover
 
 # Build the image
 docker build -t failover-demo .
@@ -42,7 +42,7 @@ Requires **Java 17+** and **Maven 3.8+**.
 ```bash
 # Clone the repo
 git clone https://github.com/Redislabs-Solution-Architects/rediscloud-ap-failover.git
-cd failover-demo
+cd rediscloud-ap-failover
 ```
 
 ```bash
