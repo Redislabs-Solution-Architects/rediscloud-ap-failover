@@ -42,8 +42,9 @@ public class KeyWriter implements Runnable {
                 keyCount.set(n);
                 System.out.println("[WRITER] Resuming from keycount = " + n);
             } else {
+                keyCount.set(0);
                 j.set("keycount", "0");
-                System.out.println("[WRITER] No keycount found, starting at 0");
+                System.out.println("[WRITER] No keycount found, resetting to 0");
             }
             initialized = true;
         } catch (Exception e) {

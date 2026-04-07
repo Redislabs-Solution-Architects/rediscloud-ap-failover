@@ -461,7 +461,7 @@ function debouncedSetRate() {
     fetch('/api/traffic/rate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({opsPerSecond: ops}) });
   }, 300);
 }
-function flushDb(which) { if (confirm('Flush Database-'+which+'? This deletes all keys.')) fetch('/api/flush/'+which,{method:'POST'}); }
+function flushDb(which) { fetch('/api/flush/'+which,{method:'POST'}); }
 
 // ── Auto-restore ──
 (function init() {
