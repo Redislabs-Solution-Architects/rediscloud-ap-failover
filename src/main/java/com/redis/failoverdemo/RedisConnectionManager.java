@@ -1,6 +1,7 @@
 package com.redis.failoverdemo;
 
 import redis.clients.jedis.*;
+import redis.clients.jedis.exceptions.JedisException;
 
 public class RedisConnectionManager {
 
@@ -14,7 +15,11 @@ public class RedisConnectionManager {
     private int dbAPort, dbBPort;
     private String dbAPassword, dbBPassword;
 
+    private ErrorLog errorLog;
+
     public RedisConnectionManager() {}
+
+    public void setErrorLog(ErrorLog errorLog) { this.errorLog = errorLog; }
 
     public void connectA(String host, int port, String password) {
         closeOne("A");
@@ -34,7 +39,10 @@ public class RedisConnectionManager {
     }
 
     private Jedis buildConnection(String host, int port, String password) {
-        JedisClientConfig cfg = DefaultJedisClientConfig.builder().password(password).ssl(false).build();
+        JedisClientConfig cfg = DefaultJedisClientConfig.builder()
+                .password(password)
+                .ssl(false)
+                .build();
         Jedis jedis = new Jedis(new HostAndPort(host, port), cfg);
         jedis.ping();
         return jedis;
@@ -65,7 +73,10 @@ public class RedisConnectionManager {
             }
             System.out.println("[CONN] Reconnected to Database-" + activeDb);
         } catch (Exception e) {
-            System.err.println("[CONN] Reconnect failed: " + e.getMessage());
+            String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+            if (errorLog != null && e instanceof JedisException)
+                errorLog.add("WRITE-" + activeDb, "Reconnect failed: " + msg);
+            System.err.println("[CONN] Reconnect failed: " + msg);
         }
     }
 

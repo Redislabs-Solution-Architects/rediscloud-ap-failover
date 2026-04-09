@@ -2,6 +2,7 @@ package com.redis.failoverdemo;
 
 import org.springframework.web.bind.annotation.*;
 import redis.clients.jedis.JedisPool;
+import redis.clients.jedis.exceptions.JedisException;
 
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -15,20 +16,29 @@ public class ApiController {
     private final KeyWriter writer;
     private final RedisCloudApiClient apiClient;
     private final AppConfig appConfig;
+    private final ErrorLog errorLog;
     private FailoverOrchestrator orchestrator;
     private final AtomicBoolean failoverInProgress = new AtomicBoolean(false);
     private final CopyOnWriteArrayList<Map<String, Object>> failoverSteps = new CopyOnWriteArrayList<>();
     private volatile Long failoverElapsedMs = null;
     private volatile boolean writerStarted = false;
 
+    // Read latency: 5-sample rolling averages per DB (ms)
+    private final double[] readLatencySamplesA = new double[5];
+    private final double[] readLatencySamplesB = new double[5];
+    private int readLatencyIdxA = 0, readLatencyCountA = 0;
+    private int readLatencyIdxB = 0, readLatencyCountB = 0;
+
     public ApiController(RedisConnectionManager connMgr,
                          KeyWriter writer,
                          RedisCloudApiClient apiClient,
-                         AppConfig appConfig) {
+                         AppConfig appConfig,
+                         ErrorLog errorLog) {
         this.connMgr = connMgr;
         this.writer = writer;
         this.apiClient = apiClient;
         this.appConfig = appConfig;
+        this.errorLog = errorLog;
     }
 
     @GetMapping("/saved-config")
@@ -148,8 +158,10 @@ public class ApiController {
     public Map<String, Object> status() {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("connected", connMgr.isConnected());
-        data.put("dbASize", safeDbSize(connMgr.getAPool()));
-        data.put("dbBSize", safeDbSize(connMgr.getBPool()));
+        data.put("dbASize", safeDbSize(connMgr.getAPool(), "A"));
+        data.put("dbBSize", safeDbSize(connMgr.getBPool(), "B"));
+        data.put("dbAVersion", safeVersion(connMgr.getAPool()));
+        data.put("dbBVersion", safeVersion(connMgr.getBPool()));
         data.put("keyCount", writer.getKeyCount());
         data.put("writingTo", connMgr.getActiveDb());
         data.put("failoverInProgress", failoverInProgress.get());
@@ -159,6 +171,7 @@ public class ApiController {
         data.put("opsPerSecond", writer.getOpsPerSecond());
         data.put("hasApiCredentials", apiClient.hasCredentials());
         data.put("failoverSteps", new ArrayList<>(failoverSteps));
+        data.put("errorLog", errorLog.getAll());
         return data;
     }
 
@@ -173,6 +186,12 @@ public class ApiController {
         int ops = body.getOrDefault("opsPerSecond", 2);
         writer.setOpsPerSecond(ops);
         return Map.of("opsPerSecond", writer.getOpsPerSecond());
+    }
+
+    @PostMapping("/error-log/clear")
+    public Map<String, String> clearErrorLog() {
+        errorLog.clear();
+        return Map.of("status", "cleared");
     }
 
     @PostMapping("/reset-failover-steps")
@@ -196,13 +215,53 @@ public class ApiController {
 
     @GetMapping("/read-keys")
     public Map<String, Object> readKeys() {
-        return Map.of(
-            "dbAKeys", readRecentFrom(connMgr.getAPool()),
-            "dbBKeys", readRecentFrom(connMgr.getBPool())
-        );
+        long startA = System.nanoTime();
+        List<Map<String, String>> aKeys = readRecentFrom(connMgr.getAPool(), "A");
+        double latA = connMgr.getAPool() != null ? (System.nanoTime() - startA) / 1_000_000.0 : -1.0;
+        recordReadLatencyA(latA);
+
+        long startB = System.nanoTime();
+        List<Map<String, String>> bKeys = readRecentFrom(connMgr.getBPool(), "B");
+        double latB = connMgr.getBPool() != null ? (System.nanoTime() - startB) / 1_000_000.0 : -1.0;
+        recordReadLatencyB(latB);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("dbAKeys", aKeys);
+        result.put("dbBKeys", bKeys);
+        result.put("dbAReadLatencyMs", avgReadLatencyA());
+        result.put("dbBReadLatencyMs", avgReadLatencyB());
+        result.put("writeLatencyMs", writer.getLastWriteLatencyMs());
+        result.put("writingTo", connMgr.getActiveDb());
+        return result;
     }
 
-    private List<Map<String, String>> readRecentFrom(JedisPool pool) {
+    private synchronized void recordReadLatencyA(double ms) {
+        if (ms < 0) return;
+        readLatencySamplesA[readLatencyIdxA % 5] = ms;
+        readLatencyIdxA++;
+        if (readLatencyCountA < 5) readLatencyCountA++;
+    }
+
+    private synchronized void recordReadLatencyB(double ms) {
+        if (ms < 0) return;
+        readLatencySamplesB[readLatencyIdxB % 5] = ms;
+        readLatencyIdxB++;
+        if (readLatencyCountB < 5) readLatencyCountB++;
+    }
+
+    private synchronized double avgReadLatencyA() {
+        if (readLatencyCountA == 0) return -1.0;
+        double sum = 0; for (int i = 0; i < readLatencyCountA; i++) sum += readLatencySamplesA[i];
+        return sum / readLatencyCountA;
+    }
+
+    private synchronized double avgReadLatencyB() {
+        if (readLatencyCountB == 0) return -1.0;
+        double sum = 0; for (int i = 0; i < readLatencyCountB; i++) sum += readLatencySamplesB[i];
+        return sum / readLatencyCountB;
+    }
+
+    private List<Map<String, String>> readRecentFrom(JedisPool pool, String label) {
         List<Map<String, String>> result = new ArrayList<>();
         if (pool == null) return padTo10(result);
         try (var jedis = pool.getResource()) {
@@ -219,7 +278,12 @@ public class ApiController {
                 String v = vals.get(i);
                 result.add(Map.of("seq", seq, "key", k, "value", v != null ? v : ""));
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            if (e instanceof JedisException) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                errorLog.add("READ-" + label, msg);
+            }
+        }
         return padTo10(result);
     }
 
@@ -228,9 +292,26 @@ public class ApiController {
         return list;
     }
 
-    private long safeDbSize(JedisPool pool) {
+    private String safeVersion(JedisPool pool) {
+        if (pool == null) return null;
+        try (var jedis = pool.getResource()) {
+            for (String line : jedis.info("server").split("\r?\n")) {
+                if (line.startsWith("redis_version:"))
+                    return line.substring("redis_version:".length()).trim();
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    private long safeDbSize(JedisPool pool, String label) {
         if (pool == null) return -1;
         try (var jedis = pool.getResource()) { return jedis.dbSize(); }
-        catch (Exception e) { return -1; }
+        catch (Exception e) {
+            if (e instanceof JedisException) {
+                String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                errorLog.add("READ-" + label, msg);
+            }
+            return -1;
+        }
     }
 }

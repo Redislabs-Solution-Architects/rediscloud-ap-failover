@@ -2,6 +2,7 @@ package com.redis.failoverdemo;
 
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.Pipeline;
+import redis.clients.jedis.exceptions.JedisException;
 
 import java.time.Instant;
 import java.util.*;
@@ -15,6 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class KeyWriter implements Runnable {
 
     private final RedisConnectionManager connMgr;
+    private final ErrorLog errorLog;
     private final String keyPrefix = "key:";
     private static final int PIPELINE_BATCH = 100; // commands per pipeline flush
     private volatile int opsPerSecond = 2;
@@ -25,8 +27,14 @@ public class KeyWriter implements Runnable {
     private int consecutiveErrors = 0;
     private final LinkedList<Map<String, String>> recentKeys = new LinkedList<>();
 
-    public KeyWriter(RedisConnectionManager connMgr) {
+    // Write latency: 5-sample rolling average of pipe.sync() round-trip time
+    private final double[] writeLatencySamples = new double[5];
+    private int writeLatencyIdx = 0;
+    private int writeLatencyCount = 0;
+
+    public KeyWriter(RedisConnectionManager connMgr, ErrorLog errorLog) {
         this.connMgr = connMgr;
+        this.errorLog = errorLog;
     }
 
     /** Read keycount from the active DB's pool and seed the counter. */
@@ -88,7 +96,10 @@ public class KeyWriter implements Runnable {
                         }
                         // Update the keycount tracker so readers know the latest key
                         pipe.set("keycount", String.valueOf(lastSeq));
+                        long pipeStart = System.nanoTime();
                         pipe.sync();
+                        double latMs = (System.nanoTime() - pipeStart) / 1_000_000.0;
+                        recordWriteLatency(latMs);
                         sent += batchSize;
                         consecutiveErrors = 0;
 
@@ -102,7 +113,10 @@ public class KeyWriter implements Runnable {
                     }
                 } catch (Exception e) {
                     consecutiveErrors++;
-                    System.err.println("[WRITER] Error (" + consecutiveErrors + "/3): " + e.getMessage());
+                    String src = "WRITE-" + connMgr.getActiveDb();
+                    String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                    if (e instanceof JedisException) errorLog.add(src, msg);
+                    System.err.println("[WRITER] Error (" + consecutiveErrors + "/3): " + msg);
                     if (consecutiveErrors >= 3) {
                         System.out.println("[WRITER] Reconnecting...");
                         connMgr.reconnectActive();
@@ -120,6 +134,20 @@ public class KeyWriter implements Runnable {
                 try { Thread.sleep(100); } catch (InterruptedException e) { break; }
             }
         }
+    }
+
+    private synchronized void recordWriteLatency(double ms) {
+        writeLatencySamples[writeLatencyIdx % 5] = ms;
+        writeLatencyIdx++;
+        if (writeLatencyCount < 5) writeLatencyCount++;
+    }
+
+    /** Returns the 5-sample rolling average write latency in ms, or -1 if no data yet. */
+    public synchronized double getLastWriteLatencyMs() {
+        if (writeLatencyCount == 0) return -1.0;
+        double sum = 0;
+        for (int i = 0; i < writeLatencyCount; i++) sum += writeLatencySamples[i];
+        return sum / writeLatencyCount;
     }
 
     public List<Map<String, String>> getRecentKeys() {

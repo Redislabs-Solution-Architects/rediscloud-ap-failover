@@ -17,11 +17,17 @@
   .step.locked { opacity:.5; pointer-events:none; }
   .step.hidden { display:none; }
   .step-header { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .step-header.collapsible { cursor:pointer; user-select:none; }
+  .step-header.collapsible:hover .step-title { color:#DC382C; }
   .step-num { width:28px; height:28px; border-radius:50%; background:#ddd; color:#fff; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center; }
   .step-num.done { background:#DC382C; } .step-num.active { background:#DC382C; }
   .step-title { font-weight:700; font-size:15px; }
   .step-check { color:#DC382C; font-size:18px; }
   .step-actions { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .step-chevron { font-size:11px; color:#aaa; margin-left:2px; transition:transform .25s; }
+  .step-chevron.collapsed { transform:rotate(-90deg); }
+  .step-body { overflow:hidden; transition:max-height .3s ease; max-height:600px; }
+  .step-body.collapsed { max-height:0; }
   .field-row { display:flex; gap:8px; margin-bottom:8px; }
   .field-row input { flex:1; padding:7px 10px; border:1px solid #ddd; border-radius:6px; font-size:13px; }
   .field-row input:disabled { background:#f5f5f5; color:#999; }
@@ -76,6 +82,7 @@
   .db-box-header .db-size { font-size:20px; font-weight:700; }
   .db-box-header .db-title.a { color:#DC382C; } .db-box-header .db-title.b { color:#1a1a2e; }
   .db-box-header .db-size.a { color:#DC382C; } .db-box-header .db-size.b { color:#1a1a2e; }
+  .db-version { font-size:10px; font-weight:400; color:#aaa; margin-left:5px; }
   .flush-btn { padding:2px 8px; border:1px solid #ddd; border-radius:4px; background:#fff; cursor:pointer; font-size:10px; color:#999; }
   .flush-btn:hover { background:#fee; color:#c30; border-color:#c30; }
 
@@ -91,6 +98,33 @@
   .rate-btn:hover { border-color:#DC382C; color:#DC382C; }
   .rate-btn.active-rate { border-color:#DC382C; background:#DC382C; color:#fff; }
   @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* Error log */
+  .error-log-wrap { margin-bottom:12px; }
+  .error-log-toggle { display:flex; align-items:center; gap:6px; padding:7px 12px; background:#fff; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.1); cursor:pointer; font-size:12px; font-weight:700; color:#555; user-select:none; }
+  .error-log-toggle:hover { color:#DC382C; }
+  .error-log-toggle .el-arrow { font-size:10px; transition:transform .25s; }
+  .error-log-toggle .el-arrow.open { transform:rotate(90deg); }
+  .error-log-count { font-size:11px; font-weight:400; color:#DC382C; }
+  .el-spacer { flex:1; }
+  .el-clear-btn { padding:2px 8px; border:1px solid #ddd; border-radius:4px; background:#fff; font-size:10px; color:#999; cursor:pointer; }
+  .el-clear-btn:hover { border-color:#c30; color:#c30; }
+  .error-log-panel { max-height:0; overflow:hidden; transition:max-height .3s ease; }
+  .error-log-panel.open { max-height:222px; }
+  .error-log-body { height:200px; overflow-y:auto; background:#0f1117; border-radius:0 0 8px 8px; padding:8px 10px; font-family:'Source Code Pro', monospace; font-size:11px; line-height:1.6; }
+  .log-line { display:flex; gap:8px; white-space:nowrap; }
+  .log-ts { color:#556; flex-shrink:0; }
+  .log-src { flex-shrink:0; font-weight:700; min-width:70px; }
+  .log-src-writea, .log-src-writeb { color:#DC382C; }
+  .log-src-reada, .log-src-readb { color:#f0a500; }
+  .log-msg { color:#ccc; overflow:hidden; text-overflow:ellipsis; }
+
+  /* Latency bar inside each DB box */
+  .db-latency-bar { display:flex; align-items:center; gap:4px; padding:2px 0 6px; font-size:10px; color:#aaa; }
+  .lat-label { font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+  .lat-val { font-family:'Source Code Pro', monospace; color:#555; min-width:44px; }
+  .lat-val.write-active { color:#DC382C; font-weight:600; }
+  .lat-sep { color:#ddd; margin:0 2px; }
 </style>
 </head>
 <body>
@@ -99,52 +133,58 @@
 
   <!-- STEP 1 -->
   <div class="step" id="step1">
-    <div class="step-header">
+    <div class="step-header" id="step1Header">
       <div class="step-num active" id="step1Num">1</div>
       <div class="step-title">Redis Cloud API Credentials</div>
       <div class="step-actions" id="step1Actions" style="display:none;">
         <div class="step-check">✓</div>
-        <button class="edit-btn" onclick="editStep1()">Edit</button>
+        <button class="edit-btn" onclick="event.stopPropagation(); editStep1();">Edit</button>
+        <span class="step-chevron" id="step1Chevron">▼</span>
       </div>
     </div>
-    <div class="field-row">
-      <input id="apiAccountKey" placeholder="Account Key">
-      <input id="apiSecretKey" type="password" placeholder="User API Key">
-      <button class="save-btn" id="apiSaveBtn" onclick="saveCredentials()">Save</button>
+    <div class="step-body" id="step1Body">
+      <div class="field-row">
+        <input id="apiAccountKey" placeholder="Account Key">
+        <input id="apiSecretKey" type="password" placeholder="User API Key">
+        <button class="save-btn" id="apiSaveBtn" onclick="saveCredentials()">Save</button>
+      </div>
+      <div class="err-msg" id="apiErr"></div>
     </div>
-    <div class="err-msg" id="apiErr"></div>
   </div>
 
   <!-- STEP 2 -->
   <div class="step locked" id="step2">
-    <div class="step-header">
+    <div class="step-header" id="step2Header">
       <div class="step-num" id="step2Num">2</div>
       <div class="step-title">Database Connections</div>
       <div class="step-actions" id="step2Actions" style="display:none;">
         <div class="step-check">✓</div>
-        <button class="edit-btn" onclick="editStep2()">Edit</button>
+        <button class="edit-btn" onclick="event.stopPropagation(); editStep2();">Edit</button>
+        <span class="step-chevron" id="step2Chevron">▼</span>
       </div>
     </div>
-    <div class="conn-row">
-      <div class="conn-box">
-        <h4>Database-A</h4>
-        <input id="dbAEndpoint" placeholder="host:port">
-        <input id="dbAPassword" type="password" placeholder="Password">
-        <input id="dbASubId" placeholder="Subscription ID">
-        <input id="dbADbId" placeholder="Database ID">
-        <div class="conn-err" id="dbAErr"></div>
+    <div class="step-body" id="step2Body">
+      <div class="conn-row">
+        <div class="conn-box">
+          <h4>Database-A</h4>
+          <input id="dbAEndpoint" placeholder="host:port">
+          <input id="dbAPassword" type="password" placeholder="Password">
+          <input id="dbASubId" placeholder="Subscription ID">
+          <input id="dbADbId" placeholder="Database ID">
+          <div class="conn-err" id="dbAErr"></div>
+        </div>
+        <div class="conn-box">
+          <h4>Database-B</h4>
+          <input id="dbBEndpoint" placeholder="host:port">
+          <input id="dbBPassword" type="password" placeholder="Password">
+          <input id="dbBSubId" placeholder="Subscription ID">
+          <input id="dbBDbId" placeholder="Database ID">
+          <div class="conn-err" id="dbBErr"></div>
+        </div>
       </div>
-      <div class="conn-box">
-        <h4>Database-B</h4>
-        <input id="dbBEndpoint" placeholder="host:port">
-        <input id="dbBPassword" type="password" placeholder="Password">
-        <input id="dbBSubId" placeholder="Subscription ID">
-        <input id="dbBDbId" placeholder="Database ID">
-        <div class="conn-err" id="dbBErr"></div>
-      </div>
+      <button class="save-btn" id="connSaveBtn" onclick="saveConnections()" style="margin-top:8px;">Save</button>
+      <div class="err-msg" id="connErr"></div>
     </div>
-    <button class="save-btn" id="connSaveBtn" onclick="saveConnections()" style="margin-top:8px;">Save</button>
-    <div class="err-msg" id="connErr"></div>
   </div>
 
   <!-- STEP 3 -->
@@ -198,9 +238,14 @@
     <div class="main-layout">
       <div class="db-box" style="flex:1; min-width:0;">
         <div class="db-box-header">
-          <span class="db-title a">Database-A</span>
+          <span class="db-title a">Database-A<span class="db-version" id="dbAVersion"></span></span>
           <button class="flush-btn" onclick="flushDb('A')">Flush</button>
           <span class="db-size a" id="dbASize">—</span>
+        </div>
+        <div class="db-latency-bar">
+          <span class="lat-label">W</span><span class="lat-val" id="dbAWriteLat">—</span>
+          <span class="lat-sep">|</span>
+          <span class="lat-label">R</span><span class="lat-val" id="dbAReadLat">—</span>
         </div>
         <table style="table-layout:fixed;width:100%;"><colgroup><col></colgroup>
           <thead><tr><th>Key</th></tr></thead>
@@ -209,14 +254,34 @@
       </div>
       <div class="db-box" style="flex:1; min-width:0;">
         <div class="db-box-header">
-          <span class="db-title b">Database-B</span>
+          <span class="db-title b">Database-B<span class="db-version" id="dbBVersion"></span></span>
           <button class="flush-btn" onclick="flushDb('B')">Flush</button>
           <span class="db-size b" id="dbBSize">—</span>
+        </div>
+        <div class="db-latency-bar">
+          <span class="lat-label">W</span><span class="lat-val" id="dbBWriteLat">—</span>
+          <span class="lat-sep">|</span>
+          <span class="lat-label">R</span><span class="lat-val" id="dbBReadLat">—</span>
         </div>
         <table style="table-layout:fixed;width:100%;"><colgroup><col></colgroup>
           <thead><tr><th>Key</th></tr></thead>
           <tbody id="readKeysB"><tr><td>&nbsp;</td></tr></tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Error Log -->
+    <div class="error-log-wrap">
+      <div class="error-log-toggle" onclick="toggleErrorLog()">
+        <span class="el-arrow" id="elArrow">▶</span> Error Log
+        <span class="error-log-count" id="elCount"></span>
+        <span class="el-spacer"></span>
+        <button class="el-clear-btn" onclick="event.stopPropagation(); clearErrorLog();">Clear</button>
+      </div>
+      <div class="error-log-panel" id="elPanel">
+        <div class="error-log-body" id="elBody">
+          <div class="log-line"><span class="log-ts">——</span><span class="log-msg" style="color:#556;">No errors yet</span></div>
+        </div>
       </div>
     </div>
 
@@ -253,12 +318,22 @@ function saveCredentials() {
     else { err.textContent = d.message || 'Error'; btn.disabled = false; btn.textContent = 'Save'; }
   }).catch(() => { err.textContent = 'Request failed'; btn.disabled = false; btn.textContent = 'Save'; });
 }
+function toggleStep(n) {
+  const body = document.getElementById('step' + n + 'Body');
+  const chevron = document.getElementById('step' + n + 'Chevron');
+  const collapsed = body.classList.toggle('collapsed');
+  chevron.classList.toggle('collapsed', collapsed);
+}
 function lockStep1() {
   document.getElementById('apiAccountKey').disabled = true;
   document.getElementById('apiSecretKey').disabled = true;
   document.getElementById('apiSaveBtn').style.display = 'none';
   document.getElementById('step1Num').className = 'step-num done';
   document.getElementById('step1Actions').style.display = '';
+  document.getElementById('step1Header').className = 'step-header collapsible';
+  document.getElementById('step1Header').onclick = () => toggleStep(1);
+  document.getElementById('step1Body').classList.add('collapsed');
+  document.getElementById('step1Chevron').classList.add('collapsed');
   document.getElementById('step2').classList.remove('locked');
   document.getElementById('step2Num').className = 'step-num active';
 }
@@ -270,6 +345,10 @@ function editStep1() {
   document.getElementById('apiSaveBtn').textContent = 'Save';
   document.getElementById('step1Num').className = 'step-num active';
   document.getElementById('step1Actions').style.display = 'none';
+  document.getElementById('step1Header').className = 'step-header';
+  document.getElementById('step1Header').onclick = null;
+  document.getElementById('step1Body').classList.remove('collapsed');
+  document.getElementById('step1Chevron').classList.remove('collapsed');
 }
 
 // ── STEP 2 ──
@@ -303,6 +382,10 @@ function lockStep2() {
   document.getElementById('connSaveBtn').style.display = 'none';
   document.getElementById('step2Num').className = 'step-num done';
   document.getElementById('step2Actions').style.display = '';
+  document.getElementById('step2Header').className = 'step-header collapsible';
+  document.getElementById('step2Header').onclick = () => toggleStep(2);
+  document.getElementById('step2Body').classList.add('collapsed');
+  document.getElementById('step2Chevron').classList.add('collapsed');
   document.getElementById('step3').classList.remove('hidden');
   document.getElementById('step3Num').className = 'step-num active';
   document.getElementById('dashboard').style.display = '';
@@ -316,6 +399,10 @@ function editStep2() {
   document.getElementById('connSaveBtn').textContent = 'Save';
   document.getElementById('step2Num').className = 'step-num active';
   document.getElementById('step2Actions').style.display = 'none';
+  document.getElementById('step2Header').className = 'step-header';
+  document.getElementById('step2Header').onclick = null;
+  document.getElementById('step2Body').classList.remove('collapsed');
+  document.getElementById('step2Chevron').classList.remove('collapsed');
 }
 
 // ── Replication graphic ──
@@ -416,6 +503,21 @@ function pollReadKeys() {
     ).join('');
     document.getElementById('readKeysA').innerHTML = renderRows(d.dbAKeys || []);
     document.getElementById('readKeysB').innerHTML = renderRows(d.dbBKeys || []);
+
+    // Latency display
+    const fmtLat = (ms) => (ms != null && ms >= 0) ? ms.toFixed(1) + 'ms' : '—';
+    const writingToA = d.writingTo === 'A';
+    const wLat = fmtLat(d.writeLatencyMs);
+
+    const elAW = document.getElementById('dbAWriteLat');
+    const elBW = document.getElementById('dbBWriteLat');
+    elAW.textContent = writingToA ? wLat : '—';
+    elBW.textContent = !writingToA ? wLat : '—';
+    elAW.className = 'lat-val' + (writingToA ? ' write-active' : '');
+    elBW.className = 'lat-val' + (!writingToA ? ' write-active' : '');
+
+    document.getElementById('dbAReadLat').textContent = fmtLat(d.dbAReadLatencyMs);
+    document.getElementById('dbBReadLat').textContent = fmtLat(d.dbBReadLatencyMs);
   }).catch(() => {});
 }
 
@@ -425,6 +527,8 @@ function poll() {
     if (d.connected) {
       document.getElementById('dbASize').textContent = d.dbASize >= 0 ? d.dbASize : '—';
       document.getElementById('dbBSize').textContent = d.dbBSize >= 0 ? d.dbBSize : '—';
+      document.getElementById('dbAVersion').textContent = d.dbAVersion ? 'v' + d.dbAVersion : '';
+      document.getElementById('dbBVersion').textContent = d.dbBVersion ? 'v' + d.dbBVersion : '';
     }
     // Write selector highlight
     document.getElementById('writeA').classList.toggle('active', d.writingTo === 'A');
@@ -448,7 +552,35 @@ function poll() {
     }
     document.getElementById('trafficBtn').disabled = !d.connected;
     document.getElementById('failoverBtn').disabled = !d.connected || d.failoverInProgress || !replActive;
+    renderErrorLog(d.errorLog);
   }).catch(() => {});
+}
+
+// ── Error Log ──
+let errorLogOpen = false;
+function toggleErrorLog() {
+  errorLogOpen = !errorLogOpen;
+  document.getElementById('elPanel').classList.toggle('open', errorLogOpen);
+  document.getElementById('elArrow').classList.toggle('open', errorLogOpen);
+}
+
+function clearErrorLog() {
+  fetch('/api/error-log/clear', { method: 'POST' }).catch(() => {});
+}
+
+function renderErrorLog(entries) {
+  const count = document.getElementById('elCount');
+  const body  = document.getElementById('elBody');
+  if (!entries || entries.length === 0) {
+    count.textContent = '';
+    body.innerHTML = '<div class="log-line"><span class="log-ts">——</span><span class="log-msg" style="color:#556;">No errors yet</span></div>';
+    return;
+  }
+  count.textContent = '(' + entries.length + ')';
+  body.innerHTML = entries.map(e => {
+    const srcClass = 'log-src-' + e.source.replace('-','').toLowerCase();
+    return `<div class="log-line"><span class="log-ts">${e.ts}</span><span class="log-src ${srcClass}">${e.source}</span><span class="log-msg">${e.message}</span></div>`;
+  }).join('');
 }
 
 function startFailover() {

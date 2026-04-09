@@ -16,8 +16,9 @@ public class RedisConfig {
     }
 
     @Bean
-    public RedisConnectionManager redisConnectionManager() {
+    public RedisConnectionManager redisConnectionManager(ErrorLog errorLog) {
         connMgr = new RedisConnectionManager();
+        connMgr.setErrorLog(errorLog);
         return connMgr;
     }
 
@@ -27,8 +28,13 @@ public class RedisConfig {
     }
 
     @Bean
-    public KeyWriter keyWriter(RedisConnectionManager connMgr) {
-        writer = new KeyWriter(connMgr);
+    public ErrorLog errorLog() {
+        return new ErrorLog();
+    }
+
+    @Bean
+    public KeyWriter keyWriter(RedisConnectionManager connMgr, ErrorLog errorLog) {
+        writer = new KeyWriter(connMgr, errorLog);
         return writer;
     }
 
