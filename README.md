@@ -2,8 +2,9 @@
 
 A demo app that showcases Redis Cloud Active-Passive replication and automated failover orchestration.
 
-## What It Does
+## Usage
 
+0. **Step 0** — Spin up application with or without Docker
 1. **Step 1** — Enter your Redis Cloud API credentials (Account Key + User API Key)
 2. **Step 2** — Connect two Redis Cloud databases (Source & Target) with their Subscription & Database IDs
 3. **Step 3** — Interactive dashboard:
